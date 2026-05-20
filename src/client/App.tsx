@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -63,13 +63,19 @@ export function App() {
     return plan.candidates.find((candidate) => candidate.id === selectedId) ?? plan.selectedCandidate;
   }, [plan, selectedId]);
 
-  async function saveSession() {
+  useEffect(() => {
+    setConfirmWishlist(false);
+    setConfirmBasePlan(false);
+    setWriteMessage(undefined);
+  }, [selectedId]);
+
+  async function saveSession(): Promise<boolean> {
     setLoadingSession(true);
     setError("");
     try {
       if (isStaticPagesMode) {
         setAuthenticated(gtApiKey.trim().length >= 8);
-        return;
+        return gtApiKey.trim().length >= 8;
       }
       const response = await fetch("/api/session/keys", {
         method: "POST",
@@ -78,9 +84,11 @@ export function App() {
       });
       if (!response.ok) throw await readApiError(response);
       setAuthenticated(true);
+      return true;
     } catch (caught) {
       setAuthenticated(false);
       setError(errorText(caught));
+      return false;
     } finally {
       setLoadingSession(false);
     }
@@ -98,9 +106,11 @@ export function App() {
         const nextPlan = buildBuildPlan(snapshot, { objective, horizonHours, cashReservePct, maxSpendPct });
         setPlan(nextPlan);
         setSelectedId(nextPlan.selectedCandidate.id);
+        setConfirmWishlist(false);
+        setConfirmBasePlan(false);
         return;
       }
-      if (!authenticated) await saveSession();
+      if (!authenticated && !(await saveSession())) return;
       const response = await fetch("/api/agent/build-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -110,6 +120,8 @@ export function App() {
       const nextPlan = (await response.json()) as BuildPlanResponse;
       setPlan(nextPlan);
       setSelectedId(nextPlan.selectedCandidate.id);
+      setConfirmWishlist(false);
+      setConfirmBasePlan(false);
     } catch (caught) {
       setError(errorText(caught));
     } finally {
